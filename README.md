@@ -19,3 +19,4 @@ npm test                # DB suites skip when Postgres is unreachable
 ```
 # whalesbot
 # whalesbot2
+# whalesbot3
