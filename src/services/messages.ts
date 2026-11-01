@@ -33,6 +33,7 @@ export const DEFAULT_MESSAGES: Record<string, string> = {
   "join.declined_short":
     "Your join request for {tier} was declined: your combined holdings ({total}) are below the minimum ({threshold}). Top up and request again.",
   "join.declined_other": "Your join request for {tier} was declined. You qualify for {other}; check your invite for that group.",
+  "join.declined_no_invite": "Your join request for {tier} was declined: this link was issued to someone else. Send /start to verify and get your own invite.",
   "join.declined_banned": "Your join request was declined.",
   "join.expired": "Your join request for {tier} expired before your wallet was verified. Send /start to verify, then request again.",
   "quarantine.notice":

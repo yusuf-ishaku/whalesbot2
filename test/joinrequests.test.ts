@@ -195,3 +195,38 @@ describe.skipIf(!available)("unauthorized joiners (quarantine)", () => {
     expect(t.tg.muted.has("-100low:4008")).toBe(false);
   });
 });
+
+describe.skipIf(!available)("invite-only join requests", () => {
+  let t: Awaited<ReturnType<typeof makeCtx>>;
+  beforeAll(async () => { t = await makeCtx(); });
+  afterAll(async () => { await t?.cleanup(); });
+
+  const setFlag = async (v: boolean) => {
+    const { config } = await t.ctx.config.current();
+    await t.ctx.config.save({ ...config, verification: { ...config.verification, inviteOnlyJoinRequests: v } }, "test");
+  };
+
+  it("declines a qualified stranger who was issued no invite, leaving no pending request", async () => {
+    await setFlag(true);
+    t.reader.set(account(1).address, "20000");
+    await bind(t.ctx, 5001, 1);
+    expect(await onJoinRequest(t.ctx, "-100low", 5001)).toBe("declined");
+    expect(t.tg.declined).toContainEqual({ groupId: "-100low", userId: 5001 });
+    expect(t.tg.approved.filter((a) => a.userId === 5001)).toHaveLength(0);
+    const rows = (await t.pool.query("SELECT 1 FROM join_requests WHERE telegram_id=5001")).rowCount;
+    expect(rows).toBe(0);
+    expect(t.tg.lastTo(5001)).toContain("issued to someone else");
+  });
+
+  it("still approves the member the invite was issued to", async () => {
+    await enforceMember(t.ctx, 5001, "verify");
+    expect(t.tg.invites.length).toBeGreaterThan(0);
+    const group = (await t.pool.query("SELECT group_id FROM group_memberships WHERE telegram_id=5001 AND removed_at IS NULL")).rows[0].group_id;
+    expect(await onJoinRequest(t.ctx, group, 5001)).toBe("approved");
+  });
+
+  it("flag off keeps the old behaviour (stranger stays pending)", async () => {
+    await setFlag(false);
+    expect(await onJoinRequest(t.ctx, "-100low", 5002, "x")).toBe("pending");
+  });
+});

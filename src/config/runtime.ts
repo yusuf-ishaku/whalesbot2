@@ -66,6 +66,8 @@ export const runtimeConfigSchema = z.object({
       joinRequestPendingHours: z.number().nonnegative().default(24),
       /** Someone enters a group without being let in by us: hold them muted until they verify, or remove at once. */
       unauthorizedJoin: z.enum(["quarantine", "kick"]).default("quarantine"),
+      /** Decline join requests from anyone we didn't issue an invite to, even if they'd qualify. Off = they may verify and be approved. */
+      inviteOnlyJoinRequests: z.boolean().default(false),
     })
     .default({}),
 });

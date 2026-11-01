@@ -181,6 +181,7 @@
       field("Pending join requests wait (hours)", bind(d.verification, "joinRequestPendingHours", "number"), "How long a join request waits for the person to verify before it is declined.")),
       h("div", { style: "margin-top:10px" }, field("If someone gets into a group without being let in", (() => { const sel = h("select", {}, h("option", { value: "quarantine", textContent: "Mute them and let them verify (recommended)" }), h("option", { value: "kick", textContent: "Remove them immediately" })); sel.value = d.verification.unauthorizedJoin || "quarantine"; sel.addEventListener("change", () => { d.verification.unauthorizedJoin = sel.value; }); return sel; })())),
       h("div", { style: "margin-top:10px;display:grid;gap:6px" }, check("Warn members before removal", d.recheck, "warnBeforeRemove"), check("Require captcha on /start", d.verification, "captcha"),
+        check("Join requests: only approve people we sent an invite to (decline everyone else, even if they hold enough)", d.verification, "inviteOnlyJoinRequests"),
         check("One wallet per Telegram account (a wallet can't be shared across accounts)", d.verification, "oneWalletPerAccount"),
         check("Require wallet signature (turn off only for testing — unsigned addresses can be spoofed)", d.verification, "signatureRequired"))));
 

@@ -361,6 +361,19 @@ export async function onJoinRequest(ctx: Ctx, groupId: string, userId: number, u
   const { config } = await ctx.config.current();
   if (!config.tiers.some((t) => t.telegramGroupId === groupId)) return "ignored";
   await ensureMember(ctx, userId, username);
+
+  // Invite-only: a request from someone we issued no invite to is declined outright, even if they'd qualify.
+  if (config.verification.inviteOnlyJoinRequests) {
+    const issued = await ctx.pool.query("SELECT 1 FROM group_memberships WHERE group_id=$1 AND telegram_id=$2 AND removed_at IS NULL", [groupId, userId]);
+    if (!issued.rowCount) {
+      const tier = config.tiers.find((t) => t.telegramGroupId === groupId)!;
+      await ctx.tg.declineJoinRequest(groupId, userId).catch((e) => ctx.log.warn("decline failed", { error: String(e) }));
+      await audit(ctx, "system", "join.declined", userId, { group: groupId, reason: "no_invite" });
+      await ctx.tg.sendMessage(userId, render(config, "join.declined_no_invite", { tier: tier.name })).catch(() => {});
+      return "declined";
+    }
+  }
+
   await ctx.pool.query(
     "INSERT INTO join_requests (group_id, telegram_id, requested_at) VALUES ($1,$2,$3) ON CONFLICT (group_id, telegram_id) WHERE resolved_at IS NULL DO NOTHING",
     [groupId, userId, ctx.now()],
