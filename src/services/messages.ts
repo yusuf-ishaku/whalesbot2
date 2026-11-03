@@ -3,6 +3,7 @@ import type { RuntimeConfig } from "../config/runtime.js";
 /** Default copy. Every key can be overridden in branding.messages from the dashboard. */
 export const DEFAULT_MESSAGES: Record<string, string> = {
   "start.welcome": "Welcome to {community}! Verify your wallet to get access to our holder groups.",
+  "start.already_verified": "You're already verified, so there's nothing more to do. Send /status to see your access or /wallet to link a different wallet.",
   "captcha.prompt": "Quick check before we start: what is {a} + {b}?",
   "captcha.failed": "That's not right. Send /start to try again.",
   "captcha.passed": "Thanks!",

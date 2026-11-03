@@ -32,9 +32,14 @@ export function buildBot(ctx: Ctx, token: string): Bot {
     const config = await cfg();
     await ensureMember(ctx, c.from.id, c.from.username);
     if (await isBanned(c.from.id)) return void c.reply(render(config, "status.banned"));
+
+    const m = (await ctx.pool.query("SELECT captcha_passed, wallet, status FROM members WHERE telegram_id=$1", [c.from.id])).rows[0];
+    const allowlisted = !!(await ctx.pool.query("SELECT 1 FROM overrides WHERE telegram_id=$1 AND type='allowlist' AND revoked_at IS NULL", [c.from.id])).rowCount;
+    if (allowlisted || (m.wallet && ["verified", "grace"].includes(m.status))) {
+      return void c.reply(render(config, "start.already_verified"));
+    }
     await c.reply(render(config, "start.welcome", { community: config.branding.communityName }));
 
-    const m = (await ctx.pool.query("SELECT captcha_passed FROM members WHERE telegram_id=$1", [c.from.id])).rows[0];
     if (config.verification.captcha && !m.captcha_passed) {
       const a = randomInt(1, 10), b = randomInt(1, 10), answer = a + b;
       const options = new Set<number>([answer]);
@@ -48,8 +53,6 @@ export function buildBot(ctx: Ctx, token: string): Bot {
       return void c.reply(render(config, "captcha.prompt", { a, b }), { reply_markup: kb });
     }
     await sendLink(c.from.id, (t) => c.reply(t));
-    // Allowlisted members need no wallet: grant access now.
-    await enforceMember(ctx, c.from.id, "verify").catch((e) => ctx.log.error("start enforce failed", { error: String(e) }));
   });
 
   bot.callbackQuery(/^cap:(\d+)$/, async (c) => {
