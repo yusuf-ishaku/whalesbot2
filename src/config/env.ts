@@ -15,6 +15,9 @@ const envSchema = z.object({
   CHAIN_NAME: z.string().default("evm"),
   RPC_URL: z.string().url(),
   EXPLORER_URL: z.string().url().optional(),
+  /** Public RPC offered to wallets that don't know the chain (never put a keyed RPC_URL here). */
+  PUBLIC_RPC_URL: z.string().url().optional(),
+  CHAIN_CURRENCY_SYMBOL: z.string().default("ETH"),
 
   /** JSON array of source definitions (see config/sources.ts). */
   SOURCES_JSON: z.string().transform((s, ctx) => {

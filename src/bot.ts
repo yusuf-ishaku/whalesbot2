@@ -2,7 +2,7 @@ import { randomInt } from "node:crypto";
 import { Bot, InlineKeyboard } from "grammy";
 import { sourceIds, type Ctx } from "./ctx.js";
 import { checkEligibility } from "./engine/decide.js";
-import { enforceMember, handleJoin, handleLeave, onJoinRequest, onUnauthorizedJoin } from "./services/enforcement.js";
+import { enforceMember, handleJoin, handleLeave, onJoinRequest, onUnauthorizedJoin, resendInvites } from "./services/enforcement.js";
 import { consumeLinkCode } from "./services/groupLink.js";
 import { render } from "./services/messages.js";
 import { statusText } from "./services/status.js";
@@ -96,6 +96,21 @@ export function buildBot(ctx: Ctx, token: string): Bot {
     if (o.outcome === "banned") return void c.reply(render(config, "status.banned"));
     if (o.outcome === "no_member" || !o.result) return void c.reply(render(config, "status.unverified"));
     await c.reply(statusText(config, o.result));
+  });
+
+  bot.command("invite", async (c) => {
+    if (c.chat.type !== "private" || !c.from) return;
+    const config = await cfg();
+    const r = await resendInvites(ctx, c.from.id);
+    switch (r.outcome) {
+      case "banned": return void c.reply(render(config, "status.banned"));
+      case "unverified": return void c.reply(render(config, "invite.unverified"));
+      case "read_failed": return void c.reply(render(config, "status.read_failed"));
+      case "not_eligible": return void c.reply(render(config, "invite.none"));
+      case "already_in": return void c.reply(render(config, "invite.already_in", { tiers: r.alreadyIn.join(", ") }));
+      case "sent": // the link itself was DM'd by issueInvite
+        if (r.alreadyIn.length) await c.reply(render(config, "invite.already_in", { tiers: r.alreadyIn.join(", ") }));
+    }
   });
 
   bot.command("help", async (c) => {

@@ -20,6 +20,13 @@ export function verifyRoutes(app: FastifyInstance, ctx: Ctx): void {
       community: config.branding.communityName,
       logoUrl: config.branding.logoUrl,
       colors: config.branding.colors,
+      chain: {
+        id: ctx.env.CHAIN_ID,
+        name: ctx.env.CHAIN_NAME,
+        rpcUrl: ctx.env.PUBLIC_RPC_URL ?? null,
+        explorerUrl: ctx.env.EXPLORER_URL ?? null,
+        currency: ctx.env.CHAIN_CURRENCY_SYMBOL,
+      },
       signatureRequired: config.verification.signatureRequired,
       message: state === "valid" && row ? signingMessage(ctx, config.branding.communityName, row) : null,
       texts: Object.fromEntries(WEB_KEYS.map((k) => [k, render(config, k)])),

@@ -223,7 +223,7 @@ async function enforceLocked(ctx: Ctx, telegramId: number, trigger: Trigger): Pr
   return { outcome: "ok", status, result, desired, actions };
 }
 
-async function issueInvite(ctx: Ctx, config: RuntimeConfig, m: MemberRow, tier: TierConfig, actions: string[]) {
+export async function issueInvite(ctx: Ctx, config: RuntimeConfig, m: MemberRow, tier: TierConfig, actions: string[]) {
   if (!tier.telegramGroupId) {
     await audit(ctx, "system", "invite.skipped_no_group", m.telegram_id, { tier: tier.id });
     return;
@@ -470,4 +470,71 @@ export async function onUnauthorizedJoin(ctx: Ctx, groupId: string, userId: numb
     await ctx.tg.sendMessage(userId, render(config, "join.request_verify", { tier: tier.name, url, minutes, community: config.branding.communityName })).catch(() => {});
   }
   return "quarantined";
+}
+
+// ---- On-demand invite -------------------------------------------------------------------------------
+
+export interface ResendOutcome {
+  outcome: "sent" | "already_in" | "unverified" | "banned" | "not_eligible" | "read_failed";
+  sent: string[];
+  alreadyIn: string[];
+}
+
+/**
+ * `/invite`: a verified, still-qualifying member who is NOT actually in a group gets a fresh single-use link.
+ * Membership is checked against Telegram itself (not our records), so a member who left or whose link died is covered,
+ * while someone already inside is never handed a link.
+ */
+export async function resendInvites(ctx: Ctx, telegramId: number): Promise<ResendOutcome> {
+  const res: ResendOutcome = { outcome: "not_eligible", sent: [], alreadyIn: [] };
+  const lock = await ctx.pool.connect();
+  try {
+    await lock.query("SELECT pg_advisory_lock($1)", [telegramId]);
+    const m = (await ctx.pool.query<MemberRow>("SELECT * FROM members WHERE telegram_id=$1", [telegramId])).rows[0];
+    if (!m) return { ...res, outcome: "unverified" };
+    const allowlisted = !!(await ctx.pool.query("SELECT 1 FROM overrides WHERE telegram_id=$1 AND type='allowlist' AND revoked_at IS NULL", [telegramId])).rowCount;
+    if (m.status !== "banned" && !allowlisted && !(m.wallet && ["verified", "grace"].includes(m.status))) return { ...res, outcome: "unverified" };
+
+    // Fresh eligibility first; this may already have issued invites for tiers with no open invite.
+    const e = await enforceLocked(ctx, telegramId, "reverify");
+    if (e.outcome === "banned") return { ...res, outcome: "banned" };
+    if (e.outcome === "skipped_read_failed") return { ...res, outcome: "read_failed" };
+    if (e.desired.length === 0) return res;
+
+    const { config } = await ctx.config.current();
+    const fresh = new Set(e.actions.filter((a) => a.startsWith("invite:")).map((a) => a.slice(7)));
+    const member = (await ctx.pool.query<MemberRow>("SELECT * FROM members WHERE telegram_id=$1", [telegramId])).rows[0]!;
+
+    for (const d of e.desired) {
+      const tier = config.tiers.find((t) => t.id === d.id);
+      if (!tier?.telegramGroupId) continue;
+      if (fresh.has(tier.id)) { res.sent.push(tier.name); continue; }
+      let inside: boolean;
+      try {
+        inside = await ctx.tg.isChatMember(tier.telegramGroupId, telegramId);
+      } catch (err) {
+        ctx.log.warn("membership check failed", { telegramId, error: String(err) });
+        continue; // can't tell: don't hand out a link blindly
+      }
+      if (inside) { res.alreadyIn.push(tier.name); continue; }
+
+      // Retire whatever stale record/link exists for this group, then issue a new one.
+      const stale = (await ctx.pool.query<MembershipRow>(
+        "SELECT id, group_id, tier_id, joined_at, invite_link, invite_expires_at FROM group_memberships WHERE telegram_id=$1 AND group_id=$2 AND removed_at IS NULL",
+        [telegramId, tier.telegramGroupId],
+      )).rows;
+      for (const r of stale) {
+        if (r.invite_link) await ctx.tg.revokeInviteLink(r.group_id, r.invite_link).catch(() => {});
+        await closeRow(ctx, r.id, "invite_reissued");
+      }
+      const actions: string[] = [];
+      await issueInvite(ctx, config, member, tier, actions);
+      if (actions.length) { res.sent.push(tier.name); await audit(ctx, `member:${telegramId}`, "invite.requested", telegramId, { tier: tier.id }); }
+    }
+    res.outcome = res.sent.length ? "sent" : res.alreadyIn.length ? "already_in" : "not_eligible";
+    return res;
+  } finally {
+    await lock.query("SELECT pg_advisory_unlock($1)", [telegramId]).catch(() => {});
+    lock.release();
+  }
 }

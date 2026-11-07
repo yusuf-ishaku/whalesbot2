@@ -52,12 +52,37 @@
     box.replaceChildren(...list.map((w) => el("button", { textContent: `${info.texts["web.connect"]}: ${w.info.name}`, onclick: () => sign(w.provider) })));
   }
 
+  // Wallets open on Ethereum by default; move them to the community's chain (adding it if unknown).
+  async function ensureChain(provider) {
+    const chain = info.chain;
+    if (!chain) return;
+    const chainId = "0x" + chain.id.toString(16);
+    try {
+      if (String(await provider.request({ method: "eth_chainId" })).toLowerCase() === chainId) return;
+    } catch { /* fall through to switch */ }
+    try {
+      await provider.request({ method: "wallet_switchEthereumChain", params: [{ chainId }] });
+    } catch (e) {
+      const unknown = e && (e.code === 4902 || e.code === -32603 || /unrecognized|unknown|not added/i.test(e.message || ""));
+      if (!unknown || !chain.rpcUrl) throw e;
+      await provider.request({
+        method: "wallet_addEthereumChain",
+        params: [{
+          chainId, chainName: chain.name, rpcUrls: [chain.rpcUrl],
+          nativeCurrency: { name: chain.currency, symbol: chain.currency, decimals: 18 },
+          ...(chain.explorerUrl ? { blockExplorerUrls: [chain.explorerUrl] } : {}),
+        }],
+      });
+    }
+  }
+
   async function sign(provider) {
     const buttons = [...document.querySelectorAll("#actions button")];
     buttons.forEach((b) => (b.disabled = true));
     try {
       status("…");
       const [address] = await provider.request({ method: "eth_requestAccounts" });
+      await ensureChain(provider);
       status(`${info.texts["web.sign"]}…`);
       let signature = "";
       if (info.signatureRequired) {
@@ -70,7 +95,7 @@
       if (!data.ok) { status(data.message || "Verification failed.", "bad"); buttons.forEach((b) => (b.disabled = false)); return; }
       showResult(data);
     } catch (e) {
-      status(e && e.code === 4001 ? "Signature request was rejected." : (e && e.message) || "Something went wrong.", "bad");
+      status(e && e.code === 4001 ? "Request was rejected in your wallet." : (e && e.message) || "Something went wrong.", "bad");
       buttons.forEach((b) => (b.disabled = false));
     }
   }

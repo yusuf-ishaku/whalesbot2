@@ -42,6 +42,7 @@ export class FakeGateway implements TelegramGateway {
   failRestrict = false;
   failRemove = false;
   admins = new Set<string>();
+  inGroup = new Set<string>();
   private n = 0;
   async sendMessage(to: number | string, text: string) { this.messages.push({ to, text }); }
   async createInviteLink(groupId: string) { const link = `https://t.me/+invite${++this.n}`; this.invites.push({ groupId, link }); return link; }
@@ -60,6 +61,7 @@ export class FakeGateway implements TelegramGateway {
   async postNotice(groupId: string, text: string, button?: { text: string; url: string }) { const id = 500 + this.notices.length; this.notices.push({ groupId, text, id, button }); return id; }
   async deleteMessage(_g: string, id: number) { this.deletedNotices.push(id); }
   async isChatAdmin(groupId: string, userId: number) { return this.admins.has(`${groupId}:${userId}`); }
+  async isChatMember(groupId: string, userId: number) { return this.inGroup.has(`${groupId}:${userId}`); }
   async botStatus(): Promise<BotGroupStatus> { return { ok: true }; }
   lastTo(id: number) { return [...this.messages].reverse().find((m) => m.to === id)?.text; }
 }

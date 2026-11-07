@@ -17,6 +17,8 @@ export interface TelegramGateway {
   approveJoinRequest(groupId: string, userId: number): Promise<void>;
   declineJoinRequest(groupId: string, userId: number): Promise<void>;
   isChatAdmin(groupId: string, userId: number): Promise<boolean>;
+  /** Whether the user is currently in the group (member, admin, creator, or restricted-but-present). */
+  isChatMember(groupId: string, userId: number): Promise<boolean>;
   botUsername(): Promise<string>;
   /** Mute (true) or restore the group's default permissions (false). */
   restrictMember(groupId: string, userId: number, mute: boolean): Promise<void>;
@@ -60,6 +62,10 @@ export class GrammyGateway implements TelegramGateway {
   async isChatAdmin(groupId: string, userId: number) {
     const m = await this.api.getChatMember(groupId, userId);
     return m.status === "creator" || m.status === "administrator";
+  }
+  async isChatMember(groupId: string, userId: number) {
+    const m = await this.api.getChatMember(groupId, userId);
+    return m.status === "member" || m.status === "administrator" || m.status === "creator" || (m.status === "restricted" && m.is_member);
   }
   async botUsername() {
     return (await this.api.getMe()).username ?? "";
@@ -116,6 +122,7 @@ export class NullGateway implements TelegramGateway {
   approveJoinRequest(): Promise<void> { return this.fail(); }
   declineJoinRequest(): Promise<void> { return this.fail(); }
   isChatAdmin(): Promise<boolean> { return this.fail(); }
+  isChatMember(): Promise<boolean> { return this.fail(); }
   botUsername(): Promise<string> { return this.fail(); }
   restrictMember(): Promise<void> { return this.fail(); }
   postNotice(): Promise<number> { return this.fail(); }
